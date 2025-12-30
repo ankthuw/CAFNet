@@ -32,73 +32,81 @@ class LayerNorm2d(nn.LayerNorm):
         x = super().forward(x)
         x = rearrange(x, "b h w c -> b c h w")
         return x
-    
+       
 class DepthWiseConv(nn.Module):
     def __init__(self, in_dim, out_dim, kernel, padding, stride=1, bias=True):
         super(DepthWiseConv, self).__init__()
+        
         self.DW_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim,
                                  kernel_size=kernel, stride=stride, 
                                  padding=padding, groups=in_dim, bias=bias)
+        
         self.PW_conv = nn.Conv2d(in_channels=in_dim, out_channels=out_dim,
                                  kernel_size=1, bias=bias)
     
     def forward(self, x):
         x = self.DW_conv(x)
         x = self.PW_conv(x)
+
         return x
+        
 
 class OverlapPatchEmbedding(nn.Module):
     def __init__(self, kernel, stride, padding, in_dim, out_dim):
         super(OverlapPatchEmbedding, self).__init__()
         self.overlap_patches = nn.Unfold(kernel_size=kernel, stride=stride, padding=padding)
-        self.embedding = nn.Conv2d(in_dim * kernel**2, out_dim, 1)
+        self.embedding = nn.Conv2d(in_dim*kernel**2, out_dim, 1)
 
     def forward(self, x):
         h, w = x.shape[-2:]
         x = self.overlap_patches(x)
         n_patches = x.shape[-1]
-        divider = int(sqrt(h * w / n_patches))
-        x = rearrange(x, 'b c (h w) -> b c h w', h=h // divider)
+        divider = int(sqrt(h*w / n_patches))
+        x = rearrange(x, 'b c (h w) -> b c h w', h = h//divider)
         x = self.embedding(x)
+
         return x
 
 class EfficientMSA(nn.Module):
     def __init__(self, dim, n_heads, reduction_ratio):
         super(EfficientMSA, self).__init__()
-        self.ln = LayerNorm2d(dim)
         self.reshaping_k = nn.Conv2d(dim, dim, kernel_size=reduction_ratio, stride=reduction_ratio)
         self.reshaping_v = nn.Conv2d(dim, dim, kernel_size=reduction_ratio, stride=reduction_ratio)
         self.attention = nn.MultiheadAttention(embed_dim=dim, num_heads=n_heads, batch_first=True)
 
     def forward(self, x):
         n, c, h, w = x.shape
-        x = self.ln(x)
+        LN = LayerNorm2d(c).to(x.device)
+        x = LN(x)
         reshaped_k = self.reshaping_k(x)
         reshaped_v = self.reshaping_v(x)
-        reshaped_k = rearrange(reshaped_k, "b c h w -> b (h w) c")
-        reshaped_v = rearrange(reshaped_v, "b c h w -> b (h w) c")
+        reshaped_k = rearrange(reshaped_k, "b c h w -> b (h w) c") 
+        reshaped_v = rearrange(reshaped_v, "b c h w -> b (h w) c") 
         q = rearrange(x, "b c h w -> b (h w) c")
-        output, _ = self.attention(q, reshaped_k, reshaped_v)
+        output, output_weights = self.attention(q, reshaped_k, reshaped_v)
+        self.last_attn_weights = output_weights  
+        
         output = rearrange(output, "b (h w) c -> b c h w", h=h, w=w)
         return output
+
 
 class MixFFN(nn.Module):
     def __init__(self, dim, expansion_factor):
         super(MixFFN, self).__init__()
-        latent_dim = dim * expansion_factor
-        self.ln = LayerNorm2d(dim)
+        latent_dim = dim*expansion_factor
         self.mixffn = nn.Sequential(
             nn.Conv2d(dim, latent_dim, 1),
             DepthWiseConv(latent_dim, latent_dim, kernel=3, padding=1),
             nn.GELU(),
             nn.Conv2d(latent_dim, dim, 1)
         )
-
     def forward(self, x):
-        x = self.ln(x)
+        n, c, h, w = x.shape
+        LN = LayerNorm2d(c).to(x.device)
+        x = LN(x)
         x = self.mixffn(x)
         return x
-
+    
 class MiT(nn.Module):
     def __init__(self, channels, dims, n_heads, expansion, reduction_ratio, n_layers):
         super(MiT, self).__init__()
@@ -107,26 +115,26 @@ class MiT(nn.Module):
         dim_pairs = list(zip(dims[:-1], dims[1:]))
 
         self.stages = nn.ModuleList([])
-        for (in_dim, out_dim), (kernel, stride, padding), n_layers, expansion, n_heads, reduction_ratio in zip(
-            dim_pairs, kernel_stride_pad, n_layers, expansion, n_heads, reduction_ratio
-        ):
+
+        for (in_dim, out_dim), (kernel, stride, padding), n_layers, expansion, n_heads, reduction_ratio in zip(dim_pairs, kernel_stride_pad, n_layers, expansion, n_heads, reduction_ratio):
             overlapping = OverlapPatchEmbedding(kernel, stride, padding, in_dim, out_dim)
             layers = nn.ModuleList([])
+            
             for _ in range(n_layers):
-                layers.append(nn.ModuleList([
-                    EfficientMSA(dim=out_dim, n_heads=n_heads, reduction_ratio=reduction_ratio),
-                    MixFFN(dim=out_dim, expansion_factor=expansion)
-                ]))
+                layers.append(nn.ModuleList([EfficientMSA(dim=out_dim, n_heads=n_heads, reduction_ratio=reduction_ratio),
+                              MixFFN(dim=out_dim, expansion_factor=expansion)]))
             self.stages.append(nn.ModuleList([overlapping, layers]))
 
     def forward(self, x):
         layer_outputs = []
         for overlapping, layers in self.stages:
-            x = overlapping(x)
-            for (attention, ffn) in layers:
-                x = attention(x) + x
+            x = overlapping(x)  
+            for (attension, ffn) in layers:  
+                x = attension(x) + x 
                 x = ffn(x) + x
-            layer_outputs.append(x)
+
+            layer_outputs.append(x) 
+
         return layer_outputs
 
 resnet_encoder = resnet18(weights=ResNet18_Weights.DEFAULT)
@@ -455,3 +463,4 @@ class CrackAwareFusionNet(pl.LightningModule):
             },
 
         }
+
