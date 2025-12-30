@@ -1,0 +1,31 @@
+import torch
+
+### train on total dataset
+
+# dataset size
+DATASET_SIZE = {'train' : 9600, 'val' : 1200, 'test' : 1200} # change according to your dataset
+
+
+# Dataset path
+dataset = "" # specify your dataset path here, e.g., "./data/crack_dataset/"
+
+NUM_EPOCHS = 100
+LEARNING_RATE = 1e-4
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+BATCH_SIZE = 16
+NUM_WORKERS = 2
+IMAGE_HEIGHT = 256 
+IMAGE_WIDTH = 256
+PIN_MEMORY = True
+LOAD_MODEL = False
+
+# Dataset dir
+TRAIN_IMG_DIR = dataset+"train/IMG"
+TRAIN_MASK_DIR = dataset+"train/GT"
+VAL_IMG_DIR = dataset+"val/IMG"
+VAL_MASK_DIR = dataset+"val/GT"
+TEST_IMG_DIR = dataset+"test/IMG"
+TEST_MASK_DIR = dataset+"test/GT"
+
+# checkpoint
+CHECKPOINTS_PATH = "./checkpoints/crack_aware_fusion_net.ckpt" # specify your checkpoint path here
