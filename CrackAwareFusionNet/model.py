@@ -1,3 +1,15 @@
+"""
+REFERENCES:
+1. Hybrid Encoder (MiT & ResNet): 
+   - Inspired by "Hybrid-Segmentor" (https://github.com/junegoo94/Hybrid-Segmentor)
+   - Utilizes Mix-Transformer (MiT) for global context and ResNet for local features.
+2. Fusion & Decoder Path:
+   - Based on "TransFuse" (https://github.com/Rayicer/TransFuse)
+   - Implements Bi-directional Fusion and Attention-Gate based skip connections.
+3. Crack Attention Modules (CrackAM):
+   - Logic adapted from "HACNetV2" (https://github.com/hanshenchen/HACNetV2)
+   - Designed to capture elongated and directional crack structures.
+"""
 from math import sqrt
 
 import torch
@@ -441,4 +453,5 @@ class CrackAwareFusionNet(pl.LightningModule):
                 "interval": "epoch",
                 "frequency": 1
             },
+
         }
