@@ -15,7 +15,7 @@ This repo contain the PyTorch implementation of CrackAwareFusionNet for pixel-wi
 
 ![](/figures/CAFNet.jpg)
 
-- Weight: 
+- Trained Model: [weight](https://drive.google.com/drive/folders/1NdbbXI3aBjSy5Ipdv07VpPGocdgA1Wl7?usp=sharing) 
 
 ## 2. Dataset
 - Data organized as:
