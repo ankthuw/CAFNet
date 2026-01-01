@@ -41,10 +41,10 @@ if __name__ == "__main__":
     # Validation
     trainer.validate(model, val_loader)
 
-    # Testing với best checkpoint
+    # Testing with best checkpoint
     trainer.test(model, test_loader, ckpt_path="best")
 
-    # Lưu model cuối cùng (fixed filenames, no timestamp)
+    # Save final model (fixed filenames, no timestamp)
     outputs_dir = os.path.join(os.getcwd(), "outputs")
     ckpt_dir = os.path.join(os.getcwd(), "checkpoints")
     os.makedirs(outputs_dir, exist_ok=True)

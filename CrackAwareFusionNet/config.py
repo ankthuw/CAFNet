@@ -3,11 +3,11 @@ import torch
 ### train on total dataset
 
 # dataset size
-DATASET_SIZE = {'train' : 9600, 'val' : 1200, 'test' : 1200} # change according to your dataset
+DATASET_SIZE = {'train' : 9600, 'val' : 1200, 'test' : 1200} 
 
 
 # Dataset path
-dataset = "" # specify your dataset path here, e.g., "./data/crack_dataset/"
+dataset = "" # specify dataset path
 
 NUM_EPOCHS = 100
 LEARNING_RATE = 1e-4
@@ -28,4 +28,4 @@ TEST_IMG_DIR = dataset+"test/IMG"
 TEST_MASK_DIR = dataset+"test/GT"
 
 # checkpoint
-CHECKPOINTS_PATH = "./checkpoints/crack_aware_fusion_net.ckpt" # specify your checkpoint path here
+CHECKPOINTS_PATH = "./checkpoints/crack_aware_fusion_net.ckpt" 
