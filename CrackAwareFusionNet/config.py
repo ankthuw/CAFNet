@@ -11,9 +11,13 @@ dataset = "" # specify dataset path
 
 NUM_EPOCHS = 100
 LEARNING_RATE = 1e-4
+WEIGHT_DECAY = 1e-5
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
-NUM_WORKERS = 2
+NUM_WORKERS = 4
+ATTN_GATE = False
+CRACKAM = True
+CRACKSPAM = True
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256
 PIN_MEMORY = True

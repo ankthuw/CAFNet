@@ -5,3 +5,7 @@ opencv-python>=4.5.0
 tqdm>=4.60.0
 Pillow>=8.0.0
 matplotlib>=3.4.0
+albumentations>=1.3.0
+einops>=0.8.1
+pytorch-lightning>=2.6.0
+torchmetrics>=1.0.0

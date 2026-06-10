@@ -1,9 +1,11 @@
-import torch
 import os
-from model import CrackAwareFusionNet
-from utils import save_predictions_as_imgs, eval_metrics
-from dataloader import get_loaders
+
+import torch
+
 import config
+from dataloader import get_loaders
+from model import CrackAwareFusionNet
+from utils import eval_metrics, save_predictions_as_imgs
 
 
 def main():
@@ -20,29 +22,38 @@ def main():
     )
 
     dataloaders = {"train": train_loader, "val": val_loader, "test": test_loader}
-    model = CrackAwareFusionNet().to(config.DEVICE)
+    model = CrackAwareFusionNet(
+        attn_gate=config.ATTN_GATE,
+        crackam=config.CRACKAM,
+        crackspam=config.CRACKSPAM,
+    ).to(config.DEVICE)
 
-    print('Loading Model')
+    print("Loading Model")
 
     ck_file_path = config.CHECKPOINTS_PATH
-    state_dict = torch.load(ck_file_path, map_location=config.DEVICE)
+    state_dict = torch.load(ck_file_path, map_location=config.DEVICE, weights_only=True)
     model.load_state_dict(state_dict)
     mul_outputs = True
-    mode = 'test'
+    mode = "test"
 
     print()
-    print('Computing Metrics')
+    print("Computing Metrics")
     eval_metrics(loader=dataloaders[mode], model=model, multiple_outputs=mul_outputs)
-    print('-----------------------------')
+    print("-----------------------------")
 
-
-    print('Saving Images')
-    file_name = 'RECALL_outputs'
+    print("Saving Images")
+    file_name = "RECALL_outputs"
     current_path = os.getcwd()
-    if file_name not in os.listdir(os.path.join(current_path)):
+    if file_name not in os.listdir(current_path):
         os.makedirs(file_name)
-    save_predictions_as_imgs(dataloaders[mode], model, folder=file_name+"/", device=config.DEVICE, multiple_outputs=mul_outputs)
-    print('Saved all images')
+    save_predictions_as_imgs(
+        dataloaders[mode],
+        model,
+        folder=file_name + "/",
+        device=config.DEVICE,
+        multiple_outputs=mul_outputs,
+    )
+    print("Saved all images")
 
 
 if __name__ == "__main__":
