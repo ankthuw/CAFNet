@@ -19,7 +19,9 @@ STD = [0.1812099, 0.17746663, 0.20386334]
 
 
 class ComprehensiveMetricsAndSaveCallback(pl.Callback):
-    def __init__(self, output_dir=None, save_mask=False, threshold=0.5, eps=1e-6):
+    """Global pixel-wise metrics (same logic as utils.eval_metrics)."""
+
+    def __init__(self, output_dir=None, save_mask=False, threshold=0.5, eps=1e-7):
         super().__init__()
         self.save_mask = save_mask
         self.threshold = threshold
@@ -32,11 +34,10 @@ class ComprehensiveMetricsAndSaveCallback(pl.Callback):
         self.reset()
 
     def reset(self):
-        self.total_iou = 0.0
-        self.total_dice = 0.0
-        self.total_precision = 0.0
-        self.total_recall = 0.0
-        self.total_specificity = 0.0
+        self.tp_total = 0.0
+        self.fp_total = 0.0
+        self.fn_total = 0.0
+        self.tn_total = 0.0
         self.num_samples = 0
 
     def on_predict_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
@@ -48,23 +49,11 @@ class ComprehensiveMetricsAndSaveCallback(pl.Callback):
         preds_flat = preds.view(preds.size(0), -1)
         gt_flat = gt_masks.view(gt_masks.size(0), -1)
 
-        tp = (preds_flat & gt_flat).float().sum(dim=1)
-        fp = (preds_flat & ~gt_flat).float().sum(dim=1)
-        fn = (~preds_flat & gt_flat).float().sum(dim=1)
-        tn = (~preds_flat & ~gt_flat).float().sum(dim=1)
-
-        iou_scores = (tp + self.eps) / (tp + fp + fn + self.eps)
-        dice_scores = (2 * tp + self.eps) / (2 * tp + fp + fn + self.eps)
-        precision_scores = (tp + self.eps) / (tp + fp + self.eps)
-        recall_scores = (tp + self.eps) / (tp + fn + self.eps)
-        specificity_scores = (tn + self.eps) / (tn + fp + self.eps)
-
-        self.total_iou += iou_scores.sum().item()
-        self.total_dice += dice_scores.sum().item()
-        self.total_precision += precision_scores.sum().item()
-        self.total_recall += recall_scores.sum().item()
-        self.total_specificity += specificity_scores.sum().item()
-        self.num_samples += iou_scores.size(0)
+        self.tp_total += (preds_flat & gt_flat).float().sum().item()
+        self.fp_total += (preds_flat & ~gt_flat).float().sum().item()
+        self.fn_total += (~preds_flat & gt_flat).float().sum().item()
+        self.tn_total += (~preds_flat & ~gt_flat).float().sum().item()
+        self.num_samples += preds.size(0)
 
         if not self.save_mask or self.output_dir is None:
             return
@@ -80,24 +69,50 @@ class ComprehensiveMetricsAndSaveCallback(pl.Callback):
             vutils.save_image(mask, save_path)
 
     @property
-    def mean_iou(self):
-        return self.total_iou / self.num_samples if self.num_samples else 0.0
+    def precision(self):
+        return self.tp_total / (self.tp_total + self.fp_total + self.eps)
 
     @property
-    def mean_dice(self):
-        return self.total_dice / self.num_samples if self.num_samples else 0.0
+    def recall(self):
+        return self.tp_total / (self.tp_total + self.fn_total + self.eps)
 
+    @property
+    def specificity(self):
+        return self.tn_total / (self.tn_total + self.fp_total + self.eps)
+
+    @property
+    def f1(self):
+        p, r = self.precision, self.recall
+        return 2 * p * r / (p + r + self.eps)
+
+    @property
+    def dice(self):
+        return 2 * self.tp_total / (2 * self.tp_total + self.fp_total + self.fn_total + self.eps)
+
+    @property
+    def iou(self):
+        return self.tp_total / (self.tp_total + self.fp_total + self.fn_total + self.eps)
+
+    # Backward-compatible aliases used by notebooks
     @property
     def mean_precision(self):
-        return self.total_precision / self.num_samples if self.num_samples else 0.0
+        return self.precision
 
     @property
     def mean_recall(self):
-        return self.total_recall / self.num_samples if self.num_samples else 0.0
+        return self.recall
 
     @property
     def mean_specificity(self):
-        return self.total_specificity / self.num_samples if self.num_samples else 0.0
+        return self.specificity
+
+    @property
+    def mean_dice(self):
+        return self.dice
+
+    @property
+    def mean_iou(self):
+        return self.iou
 
 
 class EvalCrackAwareFusionNet(CrackAwareFusionNet):
@@ -154,15 +169,16 @@ def load_model(ckpt_path, map_location="cpu"):
 
 def print_metrics(callback):
     print("\n" + "=" * 60)
-    print("COMPREHENSIVE METRICS")
+    print("GLOBAL METRICS (utils.eval_metrics style)")
     print("=" * 60)
-    print(f"  Samples evaluated : {callback.num_samples}")
+    print(f"  Images evaluated  : {callback.num_samples}")
     print("-" * 60)
-    print(f"  mIoU (Jaccard)    : {callback.mean_iou:.4f}")
-    print(f"  Dice (F1-Score)   : {callback.mean_dice:.4f}")
-    print(f"  Precision         : {callback.mean_precision:.4f}")
-    print(f"  Recall            : {callback.mean_recall:.4f}")
-    print(f"  Specificity       : {callback.mean_specificity:.4f}")
+    print(f"  mIoU (Jaccard)    : {callback.iou:.4f}")
+    print(f"  Dice (F1-Score)   : {callback.dice:.4f}")
+    print(f"  Precision         : {callback.precision:.4f}")
+    print(f"  Recall            : {callback.recall:.4f}")
+    print(f"  Specificity       : {callback.specificity:.4f}")
+    print(f"  F1 check 2PR/(P+R): {callback.f1:.4f}")
     print("=" * 60 + "\n")
 
 
