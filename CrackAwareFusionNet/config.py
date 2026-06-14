@@ -18,6 +18,7 @@ NUM_WORKERS = 4
 ATTN_GATE = False
 CRACKAM = True
 CRACKSPAM = True
+FUSION_TYPE = "cabm"  # add, concat, attention, bilinear, cabm
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256
 PIN_MEMORY = True

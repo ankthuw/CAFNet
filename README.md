@@ -75,6 +75,27 @@ python CrackAwareFusionNet/trainer.py
 ```
 
 Main training configs (epochs, batch size, learning rate, etc.) are defined in `CrackAwareFusionNet/config.py`.
+For fusion ablations, set `FUSION_TYPE` to one of `add`, `concat`, `attention`, `bilinear`, or `cabm`.
+
+### Fusion Ablation
+
+Run all fusion variants sequentially and save a CSV summary:
+
+```bash
+python CrackAwareFusionNet/ablation.py
+```
+
+Run a subset only:
+
+```bash
+python CrackAwareFusionNet/ablation.py --variants add concat cabm
+```
+
+Kaggle example:
+
+```bash
+python CrackAwareFusionNet/ablation.py --dataset_root /kaggle/input/<dataset-name> --output_dir /kaggle/working/cafnet_ablation
+```
 
 ### Test / Evaluation
 

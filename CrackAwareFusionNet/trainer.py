@@ -37,6 +37,7 @@ if __name__ == "__main__":
         attn_gate=config.ATTN_GATE,
         crackam=config.CRACKAM,
         crackspam=config.CRACKSPAM,
+        fusion_type=config.FUSION_TYPE,
     )
 
     trainer = pl.Trainer(

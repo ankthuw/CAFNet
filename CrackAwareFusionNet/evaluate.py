@@ -151,16 +151,17 @@ class SingleFolderDataModule(pl.LightningDataModule):
         )
 
 
-def load_model(ckpt_path, map_location="cpu"):
+def load_model(ckpt_path, map_location="cpu", fusion_type="cabm"):
     ckpt_path = str(ckpt_path)
     if ckpt_path.endswith(".ckpt"):
         return EvalCrackAwareFusionNet.load_from_checkpoint(
             ckpt_path,
             map_location=map_location,
+            fusion_type=fusion_type,
             weights_only=False,
         )
     if ckpt_path.endswith(".pth"):
-        model = EvalCrackAwareFusionNet()
+        model = EvalCrackAwareFusionNet(fusion_type=fusion_type)
         state_dict = torch.load(ckpt_path, map_location=map_location, weights_only=True)
         model.load_state_dict(state_dict)
         return model
@@ -191,12 +192,13 @@ def parse_args():
     parser.add_argument("--save_mask", action="store_true")
     parser.add_argument("--mask_dir", type=str, default="predicted_masks")
     parser.add_argument("--zip_masks", action="store_true")
+    parser.add_argument("--fusion_type", type=str, default="cabm", choices=["add", "concat", "attention", "bilinear", "cabm"])
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    model = load_model(args.ckpt)
+    model = load_model(args.ckpt, fusion_type=args.fusion_type)
     datamodule = SingleFolderDataModule(
         data_dir=args.data_dir,
         batch_size=args.batch_size,

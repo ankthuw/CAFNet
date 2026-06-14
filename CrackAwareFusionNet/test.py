@@ -26,6 +26,7 @@ def main():
         attn_gate=config.ATTN_GATE,
         crackam=config.CRACKAM,
         crackspam=config.CRACKSPAM,
+        fusion_type=config.FUSION_TYPE,
     ).to(config.DEVICE)
 
     print("Loading Model")

@@ -261,6 +261,68 @@ class CrackSPAM(nn.Module):
         return x * attn
 
 
+class AddFusionModule(nn.Module):
+    def __init__(self, cnn_dim, trans_dim, out_dim, drop=0.):
+        super().__init__()
+        self.cnn_proj = Conv(cnn_dim, out_dim, kernel_size=1, padding=0, bn=True, relu=False)
+        self.trans_proj = Conv(trans_dim, out_dim, kernel_size=1, padding=0, bn=True, relu=False)
+        self.refine = ResidualBlock(out_dim, out_dim)
+        self.drop = nn.Dropout2d(drop) if drop > 0 else nn.Identity()
+
+    def forward(self, cnn, trans):
+        fuse = self.cnn_proj(cnn) + self.trans_proj(trans)
+        return self.drop(self.refine(fuse))
+
+
+class ConcatFusionModule(nn.Module):
+    def __init__(self, cnn_dim, trans_dim, out_dim, drop=0.):
+        super().__init__()
+        self.cnn_proj = Conv(cnn_dim, out_dim, kernel_size=1, padding=0, bn=True, relu=False)
+        self.trans_proj = Conv(trans_dim, out_dim, kernel_size=1, padding=0, bn=True, relu=False)
+        self.refine = ResidualBlock(out_dim * 2, out_dim)
+        self.drop = nn.Dropout2d(drop) if drop > 0 else nn.Identity()
+
+    def forward(self, cnn, trans):
+        fuse = torch.cat([self.cnn_proj(cnn), self.trans_proj(trans)], dim=1)
+        return self.drop(self.refine(fuse))
+
+
+class AttentionFusionModule(nn.Module):
+    def __init__(self, cnn_dim, trans_dim, out_dim, drop=0.):
+        super().__init__()
+        self.cnn_proj = Conv(cnn_dim, out_dim, kernel_size=1, padding=0, bn=True, relu=False)
+        self.trans_proj = Conv(trans_dim, out_dim, kernel_size=1, padding=0, bn=True, relu=False)
+        self.context = nn.Sequential(
+            Conv(out_dim * 2, out_dim, kernel_size=1, padding=0, bn=True, relu=True),
+            nn.Conv2d(out_dim, 2, kernel_size=1)
+        )
+        self.refine = ResidualBlock(out_dim, out_dim)
+        self.drop = nn.Dropout2d(drop) if drop > 0 else nn.Identity()
+
+    def forward(self, cnn, trans):
+        cnn_feat = self.cnn_proj(cnn)
+        trans_feat = self.trans_proj(trans)
+        fused = torch.cat([cnn_feat, trans_feat], dim=1)
+        attn = self.context(F.adaptive_avg_pool2d(fused, 1))
+        attn = torch.softmax(attn, dim=1)
+        cnn_weight, trans_weight = attn[:, 0:1], attn[:, 1:2]
+        fuse = cnn_feat * cnn_weight + trans_feat * trans_weight
+        return self.drop(self.refine(fuse))
+
+
+class BilinearFusionModule(nn.Module):
+    def __init__(self, cnn_dim, trans_dim, out_dim, drop=0.):
+        super().__init__()
+        self.cnn_proj = Conv(cnn_dim, out_dim, kernel_size=1, padding=0, bn=True, relu=False)
+        self.trans_proj = Conv(trans_dim, out_dim, kernel_size=1, padding=0, bn=True, relu=False)
+        self.refine = ResidualBlock(out_dim, out_dim)
+        self.drop = nn.Dropout2d(drop) if drop > 0 else nn.Identity()
+
+    def forward(self, cnn, trans):
+        fuse = self.cnn_proj(cnn) * self.trans_proj(trans)
+        return self.drop(self.refine(fuse))
+
+
 class CrackAwareBiFusionModule(nn.Module):
     def __init__(self, cnn_dim, trans_dim, bi_dim, out_dim, drop=0., crackam=True, crackspam=True):
         super().__init__()
@@ -278,6 +340,33 @@ class CrackAwareBiFusionModule(nn.Module):
         bi = self.conv(self.cnn_proj(cnn) * self.trans_proj(trans))
         fuse = torch.cat([cnn_feat, trans_feat, bi], dim=1)
         return self.drop(self.refine(fuse))
+
+
+def build_fusion_module(fusion_type, cnn_dim, trans_dim, out_dim, crackam=True, crackspam=True, drop=0.):
+    fusion_type = fusion_type.lower()
+
+    if fusion_type == "add":
+        return AddFusionModule(cnn_dim=cnn_dim, trans_dim=trans_dim, out_dim=out_dim, drop=drop)
+    if fusion_type == "concat":
+        return ConcatFusionModule(cnn_dim=cnn_dim, trans_dim=trans_dim, out_dim=out_dim, drop=drop)
+    if fusion_type == "attention":
+        return AttentionFusionModule(cnn_dim=cnn_dim, trans_dim=trans_dim, out_dim=out_dim, drop=drop)
+    if fusion_type == "bilinear":
+        return BilinearFusionModule(cnn_dim=cnn_dim, trans_dim=trans_dim, out_dim=out_dim, drop=drop)
+    if fusion_type == "cabm":
+        return CrackAwareBiFusionModule(
+            cnn_dim=cnn_dim,
+            trans_dim=trans_dim,
+            bi_dim=out_dim,
+            out_dim=out_dim,
+            crackspam=crackspam,
+            crackam=crackam,
+            drop=drop,
+        )
+
+    raise ValueError(
+        f"Unsupported fusion_type='{fusion_type}'. Expected one of: add, concat, attention, bilinear, cabm."
+    )
 
 
 class AttnGate(nn.Module):
@@ -346,11 +435,13 @@ class CrackAwareFusionNet(pl.LightningModule):
         crackam=True,
         crackspam=True,
         attn_gate=False,
+        fusion_type="cabm",
         learning_rate=1e-4,
         weight_decay=1e-5,
     ):
         super(CrackAwareFusionNet, self).__init__()
         self.save_hyperparameters()
+        self.fusion_type = fusion_type.lower()
 
         self.mit = MiT(
             in_channels=in_channels,
@@ -362,10 +453,10 @@ class CrackAwareFusionNet(pl.LightningModule):
         )
         self.cnn = ResNetEncoder()
 
-        self.fusion1 = CrackAwareBiFusionModule(cnn_dim=64, trans_dim=64, bi_dim=64, out_dim=64, crackspam=crackspam, crackam=crackam)
-        self.fusion2 = CrackAwareBiFusionModule(cnn_dim=64, trans_dim=64, bi_dim=64, out_dim=64, crackspam=crackspam, crackam=crackam)
-        self.fusion3 = CrackAwareBiFusionModule(cnn_dim=128, trans_dim=128, bi_dim=128, out_dim=128, crackspam=crackspam, crackam=crackam)
-        self.fusion4 = CrackAwareBiFusionModule(cnn_dim=256, trans_dim=256, bi_dim=256, out_dim=256, crackspam=crackspam, crackam=crackam)
+        self.fusion1 = build_fusion_module(self.fusion_type, cnn_dim=64, trans_dim=64, out_dim=64, crackspam=crackspam, crackam=crackam)
+        self.fusion2 = build_fusion_module(self.fusion_type, cnn_dim=64, trans_dim=64, out_dim=64, crackspam=crackspam, crackam=crackam)
+        self.fusion3 = build_fusion_module(self.fusion_type, cnn_dim=128, trans_dim=128, out_dim=128, crackspam=crackspam, crackam=crackam)
+        self.fusion4 = build_fusion_module(self.fusion_type, cnn_dim=256, trans_dim=256, out_dim=256, crackspam=crackspam, crackam=crackam)
 
         self.up5 = Upsample(in_dim=512, skip_dim=256, out_dim=256, attn_gate=attn_gate)
         self.up4 = Upsample(in_dim=256, skip_dim=128, out_dim=128, attn_gate=attn_gate)
